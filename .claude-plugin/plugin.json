@@ -1,6 +1,6 @@
 {
   "name": "health-score",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Real-time session health score in the Claude Code status line. Scores context degradation 0–100 and warns before quality collapses.",
   "author": {
     "name": "silvesterdivas"

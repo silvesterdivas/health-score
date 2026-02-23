@@ -56,7 +56,7 @@ claude plugin marketplace add silvesterdivas/health-score
 claude plugin install health-score@health-score-marketplace
 
 # 3. Wire the status line
-~/.claude/plugins/cache/silvesterdivas/health-score/install.sh
+~/.claude/plugins/cache/health-score-marketplace/health-score/1.0.1/install.sh
 ```
 
 Then **restart Claude Code**. The score bar appears at the bottom immediately.
@@ -126,6 +126,10 @@ score < 40  →  { "decision": "block", "reason": "Run /compact." }
 ## Testing
 
 ```bash
+# Direct invocation (no stdin) — expect clean output, no errors
+./scripts/health-score.sh
+# ▓▓▓▓▓▓▓▓▓▓  100 🟢
+
 # Fresh session (9% fill) — expect 🟢
 echo '{"context_window":{"used_percentage":9}}' | ./scripts/health-score.sh
 # ▓▓▓▓▓▓▓▓▓░  95 🟢
