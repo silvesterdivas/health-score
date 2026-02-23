@@ -13,8 +13,9 @@ set -euo pipefail
 
 input=$(cat)
 
-# Extract context window data; fall back to 0 if null/missing
-PCT=$(echo "$input" | jq -r '.context_window.used_percentage // 0' | cut -d. -f1)
+# Extract context window data; fall back to 0 if null/missing/invalid JSON
+PCT=$(echo "$input" | jq -r '.context_window.used_percentage // 0' 2>/dev/null | cut -d. -f1)
+PCT=${PCT:-0}
 
 # Guard: clamp to 0–100
 [ "$PCT" -lt 0 ]   && PCT=0
