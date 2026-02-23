@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>health-score — Claude Code Plugin</title>
+<meta name="description" content="Real-time session health score for Claude Code. Scores context degradation 0–100 and warns before quality collapses. Install in one command.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --ink: #0c0b0a;
+  --paper: #f4f1eb;
+  --paper-dim: #ebe7de;
+  --paper-dark: #ddd8cc;
+  --text: #1a1917;
+  --text-mid: #5c5850;
+  --text-faint: #9a9488;
+  --amber: #c2670a;
+  --amber-bright: #e07a0e;
+  --amber-glow: rgba(194,103,10,0.08);
+  --amber-hot: #ff8c1a;
+  --green: #15803d;
+  --green-bright: #16a34a;
+  --green-bg: rgba(21,128,61,0.08);
+  --red: #b91c1c;
+  --red-bright: #dc2626;
+  --red-bg: rgba(185,28,28,0.08);
+  --rule: #d1ccc2;
+  --rule-dark: #b8b3a7;
+  --mono: 'IBM Plex Mono', 'SF Mono', monospace;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+body {
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--mono);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--rule) 0.5px, transparent 0.5px);
+  background-size: 24px 24px;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed;
+  top: 16px; left: 16px; right: 16px; bottom: 16px;
+  border: 1px solid var(--rule);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.3;
+}
+
+/* ── Status bar ── */
+.status-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 24px;
+  background: var(--ink); color: var(--paper-dim);
+  font-size: 0.65rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.status-bar__left { display: flex; align-items: center; gap: 12px; }
+.status-bar__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--amber-hot); box-shadow: 0 0 6px var(--amber-hot);
+  animation: blink 3s ease-in-out infinite;
+}
+.status-bar__right { color: var(--text-faint); letter-spacing: 0.06em; }
+
+/* ── Scan line ── */
+.scan-line {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 1px; background: rgba(194,103,10,0.3);
+  z-index: 99; pointer-events: none;
+  animation: scanDown 6s ease-in-out infinite;
+}
+
+/* ── Page ── */
+.page {
+  position: relative; z-index: 1;
+  max-width: 840px; margin: 0 auto;
+  padding: 100px 32px 80px;
+}
+
+/* ── Sections ── */
+section { margin-bottom: 80px; }
+.section-num {
+  font-size: 0.65rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 12px;
+}
+.section-title {
+  font-family: var(--serif); font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 400; line-height: 1.2; margin-bottom: 20px;
+  color: var(--text);
+}
+
+/* ── Hero ── */
+.hero { padding-top: 20px; }
+.hero__eyebrow {
+  font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--amber); margin-bottom: 20px;
+  display: flex; align-items: center; gap: 10px;
+}
+.hero__eyebrow::before {
+  content: ''; display: block; width: 24px; height: 1px; background: var(--amber);
+}
+.hero__title {
+  font-family: var(--serif);
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  font-weight: 400; line-height: 1.1;
+  margin-bottom: 20px; color: var(--text);
+}
+.hero__title em { font-style: italic; color: var(--amber); }
+.hero__desc {
+  font-size: 0.95rem; color: var(--text-mid);
+  max-width: 480px; margin-bottom: 36px; line-height: 1.7;
+}
+.hero__actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 56px; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-block; padding: 10px 20px;
+  font-family: var(--mono); font-size: 0.75rem;
+  font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  text-decoration: none; border: none; cursor: pointer;
+  transition: all 0.2s var(--ease); position: relative; overflow: hidden;
+}
+.btn--primary {
+  background: var(--ink); color: var(--paper);
+}
+.btn--primary::after {
+  content: ''; position: absolute; bottom: 0; left: -100%; width: 100%; height: 2px;
+  background: var(--amber-hot); transition: left 0.3s var(--ease);
+}
+.btn--primary:hover::after { left: 0; }
+.btn--primary:hover { background: #1e1c1a; }
+.btn--outline {
+  background: transparent; color: var(--text-mid);
+  border: 1px solid var(--rule-dark);
+}
+.btn--outline:hover { color: var(--text); border-color: var(--text-mid); }
+
+/* ── Live demo bar ── */
+.demo-bar {
+  background: var(--ink); border-radius: 2px;
+  padding: 20px 24px;
+  font-size: 0.8rem;
+}
+.demo-bar__chrome {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.demo-bar__dots { display: flex; gap: 6px; }
+.demo-bar__dot {
+  width: 10px; height: 10px; border-radius: 50%;
+}
+.demo-bar__dot--r { background: #ff5f57; }
+.demo-bar__dot--y { background: #febc2e; }
+.demo-bar__dot--g { background: #28c840; }
+.demo-bar__title { color: rgba(255,255,255,0.3); font-size: 0.7rem; letter-spacing: 0.08em; }
+
+.demo-bar__row {
+  display: flex; align-items: center; justify-content: space-between;
+  color: rgba(255,255,255,0.5); font-size: 0.72rem; margin-bottom: 8px;
+}
+.demo-bar__label { letter-spacing: 0.06em; }
+.demo-bar__model { color: rgba(255,255,255,0.3); }
+
+.demo-bar__score-row {
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 4px;
+}
+.demo-bar__blocks {
+  font-size: 1.05rem; letter-spacing: 0.05em;
+  font-family: var(--mono); transition: color 0.6s ease;
+}
+.demo-bar__number {
+  font-size: 1.3rem; font-weight: 700; min-width: 2.5rem;
+  transition: color 0.6s ease;
+}
+.demo-bar__emoji { font-size: 1rem; }
+.demo-bar__pct {
+  margin-left: auto;
+  font-size: 0.7rem; color: rgba(255,255,255,0.25);
+}
+
+/* score color states */
+.score-green .demo-bar__blocks,
+.score-green .demo-bar__number { color: #4ade80; }
+.score-yellow .demo-bar__blocks,
+.score-yellow .demo-bar__number { color: #fbbf24; }
+.score-red .demo-bar__blocks,
+.score-red .demo-bar__number { color: #f87171; }
+
+/* ── Divider ── */
+.rule { border: none; border-top: 1px solid var(--rule); margin: 0 0 80px; }
+
+/* ── Problem / signal cards ── */
+.signal-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+  margin-top: 32px;
+}
+.signal-card {
+  background: var(--paper); padding: 24px;
+}
+.signal-card__num {
+  font-size: 2rem; font-weight: 700; line-height: 1;
+  margin-bottom: 6px; color: var(--amber);
+}
+.signal-card__label {
+  font-size: 0.72rem; color: var(--text-mid);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+
+/* ── Curve visualization ── */
+.curve-wrap {
+  margin-top: 32px;
+  border: 1px solid var(--rule); padding: 32px 24px 24px;
+  background: var(--paper-dim); position: relative;
+}
+.curve-label {
+  font-size: 0.65rem; color: var(--text-faint);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.curve-svg { width: 100%; height: 120px; display: block; }
+.curve-annotation {
+  display: flex; justify-content: space-between;
+  font-size: 0.65rem; color: var(--text-faint);
+  margin-top: 8px; letter-spacing: 0.06em;
+}
+.curve-annotation span:nth-child(2) { color: var(--amber); font-weight: 600; }
+
+/* ── Score states ── */
+.states {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+  margin-top: 32px;
+}
+.state {
+  background: var(--paper); padding: 24px 20px; text-align: center;
+}
+.state__icon { font-size: 1.5rem; margin-bottom: 10px; }
+.state__range {
+  font-size: 0.95rem; font-weight: 700; margin-bottom: 4px;
+}
+.state__label {
+  font-size: 0.7rem; color: var(--text-mid); letter-spacing: 0.06em;
+  text-transform: uppercase; margin-bottom: 12px;
+}
+.state__action {
+  font-size: 0.72rem; color: var(--text-faint); line-height: 1.5;
+}
+.state--green .state__range { color: var(--green-bright); }
+.state--yellow .state__range { color: var(--amber); }
+.state--red .state__range { color: var(--red-bright); }
+.state--green { border-top: 2px solid var(--green-bright); }
+.state--yellow { border-top: 2px solid var(--amber); }
+.state--red { border-top: 2px solid var(--red-bright); }
+
+/* ── How it works ── */
+.how-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 32px; margin-top: 32px;
+}
+@media (max-width: 580px) { .how-grid { grid-template-columns: 1fr; } }
+.how-card {
+  border: 1px solid var(--rule); padding: 24px;
+}
+.how-card__step {
+  font-size: 0.65rem; color: var(--amber); letter-spacing: 0.12em;
+  text-transform: uppercase; margin-bottom: 8px;
+}
+.how-card__title {
+  font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; color: var(--text);
+}
+.how-card__desc { font-size: 0.8rem; color: var(--text-mid); line-height: 1.6; }
+.how-card code {
+  background: var(--paper-dark); padding: 1px 5px;
+  font-size: 0.78rem; color: var(--amber-bright);
+}
+
+/* ── Install ── */
+.install-block {
+  border: 1px solid var(--rule); margin-top: 32px;
+}
+.install-step {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--rule);
+  display: flex; gap: 16px; align-items: flex-start;
+}
+.install-step:last-child { border-bottom: none; }
+.install-step__num {
+  font-size: 0.65rem; color: var(--amber); letter-spacing: 0.12em;
+  text-transform: uppercase; white-space: nowrap; padding-top: 2px;
+  min-width: 52px;
+}
+.install-step__body { flex: 1; }
+.install-step__label {
+  font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; color: var(--text);
+}
+.install-cmd {
+  background: var(--ink); padding: 12px 16px;
+  font-family: var(--mono); font-size: 0.78rem;
+  color: var(--paper-dim); line-height: 1.8;
+  position: relative; cursor: pointer;
+  transition: background 0.15s;
+}
+.install-cmd:hover { background: #1e1c1a; }
+.install-cmd .t-dim { color: rgba(255,255,255,0.3); }
+.install-cmd .t-green { color: #4ade80; }
+.install-cmd .t-amber { color: #fbbf24; }
+
+.copy-hint {
+  font-size: 0.65rem; color: var(--text-faint);
+  margin-top: 6px; letter-spacing: 0.06em;
+}
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--rule);
+  padding-top: 32px; margin-top: 80px;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 12px;
+  font-size: 0.7rem; color: var(--text-faint);
+}
+footer a { color: var(--amber); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* ── Animations ── */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes scanDown {
+  0% { top: 32px; opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 0.4; }
+  100% { top: calc(100vh - 32px); opacity: 0; }
+}
+@keyframes revealDown {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.reveal { opacity: 0; animation: revealDown 0.7s var(--ease) forwards; }
+.reveal-1 { animation-delay: 0.1s; }
+.reveal-2 { animation-delay: 0.2s; }
+.reveal-3 { animation-delay: 0.3s; }
+.reveal-4 { animation-delay: 0.45s; }
+.reveal-5 { animation-delay: 0.6s; }
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .page { padding: 88px 20px 60px; }
+  .states { grid-template-columns: 1fr; }
+  .signal-grid { grid-template-columns: 1fr 1fr; }
+  footer { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<div class="scan-line"></div>
+
+<div class="status-bar">
+  <div class="status-bar__left">
+    <span>health-score v1.0.0</span>
+    <span class="status-bar__dot"></span>
+    <span>monitoring</span>
+  </div>
+  <div class="status-bar__right">by Silvester Divas</div>
+</div>
+
+<div class="page">
+
+  <!-- ── Hero ── -->
+  <header class="hero">
+    <div class="hero__eyebrow reveal reveal-1">Claude Code Plugin</div>
+    <h1 class="hero__title reveal reveal-2">Know before your<br>session <em>collapses.</em></h1>
+    <p class="hero__desc reveal reveal-3">
+      A real-time 0–100 health score in your Claude Code status line.
+      Tracks context degradation and warns before quality collapses —
+      updated after every message.
+    </p>
+    <div class="hero__actions reveal reveal-4">
+      <a href="#install" class="btn btn--primary">Install Now</a>
+      <a href="#how-it-works" class="btn btn--outline">How It Works</a>
+      <a href="https://github.com/silvesterdivas/health-score" class="btn btn--outline">GitHub</a>
+    </div>
+
+    <!-- Live animated demo bar -->
+    <div class="demo-bar reveal reveal-5" id="demoBar">
+      <div class="demo-bar__chrome">
+        <div class="demo-bar__dots">
+          <span class="demo-bar__dot demo-bar__dot--r"></span>
+          <span class="demo-bar__dot demo-bar__dot--y"></span>
+          <span class="demo-bar__dot demo-bar__dot--g"></span>
+        </div>
+        <span class="demo-bar__title">claude-sonnet-4-6 — status line</span>
+      </div>
+      <div class="demo-bar__row">
+        <span class="demo-bar__label">⬡ claude-sonnet-4-6</span>
+        <span class="demo-bar__model">~/my-project</span>
+      </div>
+      <div class="demo-bar__score-row" id="scoreRow">
+        <span class="demo-bar__blocks" id="demoBlocks">▓▓▓▓▓▓▓▓▓░</span>
+        <span class="demo-bar__number" id="demoNumber">91</span>
+        <span class="demo-bar__emoji" id="demoEmoji">🟢</span>
+        <span class="demo-bar__pct" id="demoPct">9% context</span>
+      </div>
+    </div>
+  </header>
+
+  <hr class="rule">
+
+  <!-- ── The problem ── -->
+  <section id="the-problem">
+    <div class="section-num">01 — The Problem</div>
+    <h2 class="section-title">Context rot is silent.<br><em>Until it isn't.</em></h2>
+    <p style="font-size:0.88rem;color:var(--text-mid);max-width:560px;line-height:1.7">
+      LLM accuracy degrades as context fills. Past 73% (≈147K tokens on a 200K window),
+      quality collapse accelerates non-linearly. You don't notice until Claude is
+      hallucinating, looping, or ignoring your constraints.
+    </p>
+
+    <div class="signal-grid">
+      <div class="signal-card">
+        <div class="signal-card__num">147K</div>
+        <div class="signal-card__label">Token threshold where collapse begins</div>
+      </div>
+      <div class="signal-card">
+        <div class="signal-card__num">−17pt</div>
+        <div class="signal-card__label">MRCR score drop at 1M context (Opus 4.6)</div>
+      </div>
+      <div class="signal-card">
+        <div class="signal-card__num">35min</div>
+        <div class="signal-card__label">Avg time to measurable degradation</div>
+      </div>
+      <div class="signal-card">
+        <div class="signal-card__num">0</div>
+        <div class="signal-card__label">Tools that score it in real time (until now)</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ── Score curve ── -->
+  <section id="how-it-works">
+    <div class="section-num">02 — How It Works</div>
+    <h2 class="section-title">A non-linear curve,<br><em>because decay isn't linear.</em></h2>
+    <p style="font-size:0.88rem;color:var(--text-mid);max-width:560px;line-height:1.7;margin-bottom:0">
+      The score maps context fill % to a health value using a two-segment curve:
+      gentle decay from 100→50 through the first 73%, then accelerated collapse to 0.
+      This mirrors how LLM quality actually degrades.
+    </p>
+
+    <div class="curve-wrap">
+      <div class="curve-label">Score vs. Context Fill %</div>
+      <svg class="curve-svg" viewBox="0 0 600 120" preserveAspectRatio="none">
+        <!-- Grid lines -->
+        <line x1="0" y1="0" x2="600" y2="0" stroke="#d1ccc2" stroke-width="0.5"/>
+        <line x1="0" y1="60" x2="600" y2="60" stroke="#d1ccc2" stroke-width="0.5" stroke-dasharray="4,4"/>
+        <line x1="0" y1="120" x2="600" y2="120" stroke="#d1ccc2" stroke-width="0.5"/>
+        <!-- 73% threshold line -->
+        <line x1="438" y1="0" x2="438" y2="120" stroke="#c2670a" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+        <!-- Green zone fill -->
+        <path d="M0,12 L438,60 L438,120 L0,120 Z" fill="rgba(21,128,61,0.06)"/>
+        <!-- Red zone fill -->
+        <path d="M438,60 L600,120 L600,120 L438,120 Z" fill="rgba(185,28,28,0.06)"/>
+        <!-- Curve: green segment (0→73%) -->
+        <path d="M0,12 L438,60" stroke="#16a34a" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <!-- Curve: red segment (73→100%) -->
+        <path d="M438,60 L600,120" stroke="#dc2626" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <!-- Threshold dot -->
+        <circle cx="438" cy="60" r="5" fill="#c2670a"/>
+        <!-- Score labels -->
+        <text x="6" y="14" font-family="IBM Plex Mono, monospace" font-size="9" fill="#9a9488">100</text>
+        <text x="6" y="63" font-family="IBM Plex Mono, monospace" font-size="9" fill="#9a9488">50</text>
+        <text x="6" y="118" font-family="IBM Plex Mono, monospace" font-size="9" fill="#9a9488">0</text>
+      </svg>
+      <div class="curve-annotation">
+        <span>0% fill</span>
+        <span>73% — cliff edge (147K tokens)</span>
+        <span>100% fill</span>
+      </div>
+    </div>
+
+    <div class="how-grid" style="margin-top:32px">
+      <div class="how-card">
+        <div class="how-card__step">Step 01</div>
+        <div class="how-card__title">Status line reads live data</div>
+        <div class="how-card__desc">
+          Claude Code pipes <code>context_window.used_percentage</code> to the script
+          after every assistant message. No hooks, no polling, no daemon.
+        </div>
+      </div>
+      <div class="how-card">
+        <div class="how-card__step">Step 02</div>
+        <div class="how-card__title">Score computed instantly</div>
+        <div class="how-card__desc">
+          Pure bash. Two-segment formula maps fill % to 0–100 score.
+          Writes state to <code>/tmp</code> for the Stop hook.
+        </div>
+      </div>
+      <div class="how-card">
+        <div class="how-card__step">Step 03</div>
+        <div class="how-card__title">Bar renders in status line</div>
+        <div class="how-card__desc">
+          <code>▓▓▓▓▓░░░░░&nbsp;54&nbsp;🟡</code> — always visible at the bottom.
+          Color shifts green → yellow → red as context fills.
+        </div>
+      </div>
+      <div class="how-card">
+        <div class="how-card__step">Step 04</div>
+        <div class="how-card__title">Stop hook catches the cliff</div>
+        <div class="how-card__desc">
+          When score drops below 40, the Stop hook blocks Claude from
+          idling and prompts you to run <code>/compact</code>.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ── Score states ── -->
+  <section id="score-guide">
+    <div class="section-num">03 — Score Guide</div>
+    <h2 class="section-title">Three states.<br><em>One glance.</em></h2>
+
+    <div class="states">
+      <div class="state state--green">
+        <div class="state__icon">🟢</div>
+        <div class="state__range">70 – 100</div>
+        <div class="state__label">Healthy</div>
+        <div class="state__action">Context is fresh.<br>Keep going.</div>
+      </div>
+      <div class="state state--yellow">
+        <div class="state__icon">🟡</div>
+        <div class="state__range">40 – 69</div>
+        <div class="state__label">Caution</div>
+        <div class="state__action">Approaching the cliff.<br>Plan to /compact soon.</div>
+      </div>
+      <div class="state state--red">
+        <div class="state__icon">🔴</div>
+        <div class="state__range">0 – 39</div>
+        <div class="state__label">Critical</div>
+        <div class="state__action">Past the threshold.<br>Claude will warn you.</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ── Install ── -->
+  <section id="install">
+    <div class="section-num">04 — Install</div>
+    <h2 class="section-title">Three commands.<br><em>Then restart.</em></h2>
+
+    <div class="install-block">
+      <div class="install-step">
+        <div class="install-step__num">Step 01</div>
+        <div class="install-step__body">
+          <div class="install-step__label">Add the marketplace</div>
+          <div class="install-cmd">
+            <span class="t-dim">$</span> claude plugin marketplace add silvesterdivas/health-score
+          </div>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="install-step__num">Step 02</div>
+        <div class="install-step__body">
+          <div class="install-step__label">Install the plugin</div>
+          <div class="install-cmd">
+            <span class="t-dim">$</span> claude plugin install health-score@health-score-marketplace
+          </div>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="install-step__num">Step 03</div>
+        <div class="install-step__body">
+          <div class="install-step__label">Wire the status line</div>
+          <div class="install-cmd">
+            <span class="t-dim">$</span> ~/.claude/plugins/cache/silvesterdivas/health-score/install.sh
+          </div>
+          <div class="copy-hint">Copies the script + adds statusLine to ~/.claude/settings.json</div>
+        </div>
+      </div>
+      <div class="install-step">
+        <div class="install-step__num">Done</div>
+        <div class="install-step__body">
+          <div class="install-step__label">Restart Claude Code</div>
+          <div class="install-cmd" style="color:rgba(255,255,255,0.35)">
+            <span class="t-green">▓▓▓▓▓▓▓▓▓░</span>&nbsp;&nbsp;<span class="t-green">91 🟢</span>&nbsp;&nbsp;<span style="color:rgba(255,255,255,0.2)">← appears at the bottom</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>health-score v1.0.0 · MIT License</span>
+    <span>
+      <a href="https://github.com/silvesterdivas/health-score">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/silvesterdivas/health-score/blob/main/README.md">Docs</a>
+      &nbsp;·&nbsp;
+      by <a href="https://github.com/silvesterdivas">Silvester Divas</a>
+    </span>
+  </footer>
+
+</div>
+
+<script>
+// Live animated demo bar
+// Cycles through score states: 🟢 → 🟡 → 🔴 → back to 🟢
+(function() {
+  const bar = document.getElementById('demoBar');
+  const scoreRow = document.getElementById('scoreRow');
+  const blocks = document.getElementById('demoBlocks');
+  const number = document.getElementById('demoNumber');
+  const emoji = document.getElementById('demoEmoji');
+  const pct = document.getElementById('demoPct');
+
+  // Score keyframes: [score, fill_pct]
+  const keyframes = [
+    [91, 9],
+    [83, 20],
+    [74, 32],
+    [64, 46],
+    [54, 68],
+    [47, 75],
+    [38, 80],
+    [24, 87],
+    [12, 93],
+    [4, 98],
+    // pause at red, then reset
+    [91, 9],
+  ];
+
+  let frame = 0;
+
+  function getState(score) {
+    if (score >= 70) return 'green';
+    if (score >= 40) return 'yellow';
+    return 'red';
+  }
+
+  function getEmoji(score) {
+    if (score >= 70) return '🟢';
+    if (score >= 40) return '🟡';
+    return '🔴';
+  }
+
+  function buildBar(score) {
+    const filled = Math.floor(score / 10);
+    const empty = 10 - filled;
+    return '▓'.repeat(filled) + '░'.repeat(empty);
+  }
+
+  function render(score, fill) {
+    const state = getState(score);
+
+    blocks.textContent = buildBar(score);
+    number.textContent = score;
+    emoji.textContent = getEmoji(score);
+    pct.textContent = fill + '% context';
+
+    scoreRow.className = 'demo-bar__score-row';
+    bar.className = 'demo-bar score-' + state;
+  }
+
+  function tick() {
+    const [score, fill] = keyframes[frame];
+    render(score, fill);
+    frame = (frame + 1) % keyframes.length;
+
+    // Pause longer at the start and at critical red
+    const delay = (score === 91 || frame === 0) ? 1800 : 900;
+    setTimeout(tick, delay);
+  }
+
+  // Start after page animations settle
+  setTimeout(tick, 1200);
+})();
+</script>
+
+</body>
+</html>
