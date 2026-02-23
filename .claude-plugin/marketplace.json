@@ -1,0 +1,11 @@
+{
+  "name": "health-score-marketplace",
+  "owner": { "name": "Silvester Divas" },
+  "plugins": [
+    {
+      "name": "health-score",
+      "source": "./",
+      "description": "Real-time session health score in the Claude Code status line. Scores context degradation 0–100 and warns before quality collapses."
+    }
+  ]
+}

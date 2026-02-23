@@ -1,0 +1,11 @@
+{
+  "name": "health-score",
+  "version": "1.0.0",
+  "description": "Real-time session health score in the Claude Code status line. Scores context degradation 0–100 and warns before quality collapses.",
+  "author": {
+    "name": "silvesterdivas"
+  },
+  "repository": "https://github.com/silvesterdivas/health-score",
+  "license": "MIT",
+  "keywords": ["context", "health", "observability", "status", "degradation"]
+}
